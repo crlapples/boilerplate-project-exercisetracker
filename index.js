@@ -29,7 +29,7 @@ app.post("/api/users", function (req, res) {
 });
 
 app.get("/api/users", function (req, res) {
-  res.send(users);
+  res.json(users);
 });
 
 function getUsername(number) {
@@ -38,52 +38,72 @@ function getUsername(number) {
 };
 
 function dateFormat(date) {
-  if (date) {
-    return new Date(date).toDateString();
-  } else {
-    return new Date().toDateString();
-  }
-};
+  if (date) return new Date(date);
+  return new Date();
+}
 
 app.post("/api/users/:_id/exercises", function (req, res) {
-  const username = getUsername(req.params._id);
-  if (!username) {
-    return res.status(400).json({ error: "User not found" });
-  }
-  const addition = ({ username: getUsername(req.params._id), description: req.body.description, duration: Number(req.body.duration), date: dateFormat(req.body.date), _id: req.params._id });
-  exercises.push(addition);
-  let log = logs.find(l => l._id === req.params._id);
-  if (!log) {
-    logs.push({ username: getUsername(req.params._id), count: 1, _id: req.params._id, log: [{ description: req.body.description, duration: Number(req.body.duration), date: dateFormat(req.body.date) }] });
+  const user = findUserById(req.params._id);
+  if (!user) return res.json({ error: 'User not found' });
+
+  const exerciseDate = req.body.date ? new Date(req.body.date) : new Date();
+  const newExercise = {
+    username: user.username,
+    description: req.body.description,
+    duration: Number(req.body.duration),
+    date: exerciseDate.toISOString(),
+    _id: req.params._id
+  };
+  exercises.push(newExercise);
+
+  let userLog = logs.find(l => l._id === req.params._id);
+  if (!userLog) {
+    logs.push({
+      username: user.username,
+      count: 1,
+      _id: req.params._id,
+      log: [newExercise]
+    });
   } else {
-    log.log.push({ description: req.body.description, duration: Number(req.body.duration), date: dateFormat(req.body.date) });
-    log.count = log.log.length;
+    userLog.log.push(newExercise);
+    userLog.count = userLog.log.length;
   }
-  res.json(addition);
+
+  res.json({
+    username: user.username,
+    description: req.body.description,
+    duration: Number(req.body.duration),
+    date: exerciseDate.toDateString(),
+    _id: req.params._id
+  });
 });
 
 app.get("/api/users/:_id/logs", function (req, res) {
   const { from, to, limit } = req.query;
-  let log = logs.find(l => l._id === req.params._id);
-  if (!log) {
-    return res.status(400).json({ error: "Log not found for this user" }); // return error if log not found
-  }
-  let filteredLogs = log.log;
+  const userLog = logs.find(l => l._id === req.params._id);
+  if (!userLog) return res.json({ error: 'User log not found' });
+
+  let filteredLogs = [...userLog.log];
   if (from) {
-    let fromDate = new Date(from);
-    filteredLogs = filteredLogs.filter(l => new Date(l.date) >= fromDate);
-  } 
-  
+    const fromDate = new Date(from);
+    filteredLogs = filteredLogs.filter(e => new Date(e.date) >= fromDate);
+  }
   if (to) {
-    let toDate = new Date(to);
-    filteredLogs = filteredLogs.filter(l => new Date(l.date) <= toDate);
+    const toDate = new Date(to);
+    filteredLogs = filteredLogs.filter(e => new Date(e.date) <= toDate);
   }
- 
-  if (limit) {
-    filteredLogs = filteredLogs.slice(0, Number(limit));
-  }
-  
-  res.json({ username: log.username, count: filteredLogs.length, _id: log._id, log: filteredLogs });
+  if (limit) filteredLogs = filteredLogs.slice(0, Number(limit));
+
+  res.json({
+    username: userLog.username,
+    count: userLog.count,
+    _id: userLog._id,
+    log: filteredLogs.map(e => ({
+      description: e.description,
+      duration: e.duration,
+      date: new Date(e.date).toDateString()
+    }))
+  });
 });
 
 const listener = app.listen(process.env.PORT || 3000, () => {
